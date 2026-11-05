@@ -1,0 +1,10 @@
+{
+  "additionalFiles": "",
+  "builtInLibrariesFolders": "C:\\Users\\clone\\AppData\\Local\\Arduino15\\libraries",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "build.warn_data_percentage=75",
+  "fqbn": "esp32:esp32:XIAO_ESP32C5:UploadSpeed=921600,CDCOnBoot=cdc,CPUFreq=240,FlashFreq=80,FlashMode=qio,FlashSize=8M,PartitionScheme=default_8MB,DebugLevel=none,PSRAM=disabled,EraseFlash=none,JTAGAdapter=default,ZigbeeMode=default",
+  "hardwareFolders": "c:\\Users\\clone\\AppData\\Local\\Arduino15\\packages,c:\\Users\\clone\\OneDrive\\Documents\\Arduino\\hardware",
+  "otherLibrariesFolders": "c:\\Users\\clone\\OneDrive\\Documents\\Arduino\\libraries",
+  "sketchLocation": "C:\\Users\\clone\\Desktop\\Electronic projects\\gauge_app\\GaugeTachX27"
+}

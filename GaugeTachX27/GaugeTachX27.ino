@@ -26,11 +26,16 @@
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <Update.h>
 #if defined(CONFIG_BLUEDROID_ENABLED)
 #include <BLE2902.h>          // NimBLE (ESP32-C5) adds this descriptor automatically
 #endif
 
-#define FW_VERSION "0.4.1"
+#define FW_VERSION "0.5.1"
+// Releases: bump FW_VERSION, Sketch > Export Compiled Binary, publish the .bin
+// and version.json in the GaugeTachFirmware repo (see its README).
+// Tools > Partition Scheme must stay "8M with spiffs (3MB APP/1.5MB SPIFFS)":
+// it has the two app slots OTA needs.
 
 // ------------------------------------------------------------------
 //  Pins  (GPIO numbers; XIAO labels in comments)
@@ -642,7 +647,9 @@ void printMonitor() {
 //    config  6a1f0002  READ    JSON of every setting (+ "rev")
 //    command 6a1f0003  WRITE   the same text commands as the serial console,
 //                              one per line ("set speed 300\nsave")
-//    status  6a1f0004  NOTIFY  live JSON 10x/s: rpm, needle, homed, rev...
+//    status  6a1f0004  NOTIFY  live JSON 10x/s: rpm, needle, homed, rev, ota...
+//    otactl  6a1f0005  WRITE   OTA control: "begin <bytes>", "end", "abort"
+//    otadata 6a1f0006  WRITE   OTA firmware chunks (raw bytes, in order)
 //
 //  Commands from the app are queued and run in loop(), exactly as if they
 //  were typed in the Serial Monitor, so there's only one code path.
@@ -651,6 +658,8 @@ void printMonitor() {
 #define GAUGE_CFG_UUID    "6a1f0002-3c2d-4b8e-9f10-7e5a2c9d4b01"
 #define GAUGE_CMD_UUID    "6a1f0003-3c2d-4b8e-9f10-7e5a2c9d4b01"
 #define GAUGE_STATUS_UUID "6a1f0004-3c2d-4b8e-9f10-7e5a2c9d4b01"
+#define GAUGE_OTACTL_UUID "6a1f0005-3c2d-4b8e-9f10-7e5a2c9d4b01"
+#define GAUGE_OTADAT_UUID "6a1f0006-3c2d-4b8e-9f10-7e5a2c9d4b01"
 
 constexpr size_t BLE_CMD_LEN = 100;
 QueueHandle_t      bleCmdQ    = nullptr;
@@ -659,9 +668,75 @@ BLECharacteristic* statusChar = nullptr;
 volatile bool      bleConnected = false;
 char               bleName[24];
 
+// ---- OTA (firmware update from the app) ----
+// 0 idle, 1 receiving, 2 done (rebooting), 3 failed
+volatile uint8_t  otaState    = 0;
+volatile uint32_t otaSize     = 0;
+volatile uint32_t otaRecv     = 0;
+volatile uint32_t otaRebootAt = 0;
+char              otaErr[48]  = "";
+
+void otaFail(const char* why) {
+  if (Update.isRunning()) Update.abort();
+  strncpy(otaErr, why, sizeof(otaErr) - 1);
+  otaErr[sizeof(otaErr) - 1] = 0;
+  otaState = 3;
+  manualHold = false;
+}
+
+void otaAbortIfRunning() {
+  if (otaState == 1) { otaFail("connection lost"); }
+}
+
+// Runs in the BLE task. The write is acknowledged only after this returns,
+// so the app can't send data faster than flash can take it.
+class OtaCtlCB : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* c) override {
+    String v = c->getValue();
+    v.trim();
+    if (v.startsWith("begin ")) {
+      if (Update.isRunning()) Update.abort();
+      uint32_t size = (uint32_t)strtoul(v.c_str() + 6, nullptr, 10);
+      otaErr[0] = 0;
+      otaRecv = 0;
+      otaSize = size;
+      if (size < 1024) { otaFail("bad size"); return; }
+      if (!Update.begin(size)) { otaFail(Update.errorString()); return; }
+      otaState = 1;
+      manualHold = true;                         // park the needle at zero while updating
+      setTarget(0);
+    } else if (v == "end") {
+      if (otaState != 1) return;
+      if (otaRecv != otaSize) { otaFail("incomplete"); return; }
+      if (!Update.end(false)) { otaFail(Update.errorString()); return; }  // verifies the image
+      otaState = 2;
+      otaRebootAt = millis() + 1500;            // give the app time to see "done"
+    } else if (v == "abort") {
+      if (Update.isRunning()) Update.abort();
+      otaState = 0;
+      manualHold = false;
+    }
+  }
+};
+
+class OtaDataCB : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* c) override {
+    if (otaState != 1) return;
+    size_t len = c->getLength();
+    if (len == 0) return;
+    if (otaRecv + len > otaSize) { otaFail("too much data"); return; }
+    if (Update.write(c->getData(), len) != len) { otaFail(Update.errorString()); return; }
+    otaRecv = otaRecv + len;
+  }
+};
+
 class GaugeServerCB : public BLEServerCallbacks {
   void onConnect(BLEServer*) override    { bleConnected = true; }
-  void onDisconnect(BLEServer*) override { bleConnected = false; BLEDevice::startAdvertising(); }
+  void onDisconnect(BLEServer*) override {
+    bleConnected = false;
+    otaAbortIfRunning();
+    BLEDevice::startAdvertising();
+  }
 };
 
 class GaugeCmdCB : public BLECharacteristicCallbacks {
@@ -716,15 +791,17 @@ void processCommand(char* line) {
 }
 
 void bleStatusTask(void*) {
-  char b[220];
+  char b[300];
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(100));
     if (!bleConnected || !statusChar) continue;
+    unsigned otaPct = otaSize ? (unsigned)((uint64_t)otaRecv * 100 / otaSize) : 0;
     int n = snprintf(b, sizeof(b),
       "{\"rpm\":%.0f,\"raw\":%.0f,\"needle\":%.2f,\"target\":%.2f,\"homed\":%u,\"busy\":%u,"
-      "\"hold\":%u,\"sim\":%d,\"unsaved\":%u,\"rev\":%lu}",
+      "\"hold\":%u,\"sim\":%d,\"unsaved\":%u,\"rev\":%lu,\"ota\":%u,\"otapct\":%u,\"otaerr\":\"%s\"}",
       (float)rpmFilt, (float)rpmRaw, (float)mPos, (float)mTarget, homed ? 1 : 0, busy ? 1 : 0,
-      manualHold ? 1 : 0, simRpm >= 0 ? (int)simRpm : -1, cfgUnsaved ? 1 : 0, (unsigned long)cfgRev);
+      manualHold ? 1 : 0, simRpm >= 0 ? (int)simRpm : -1, cfgUnsaved ? 1 : 0, (unsigned long)cfgRev,
+      (unsigned)otaState, otaPct, otaErr);
     statusChar->setValue((uint8_t*)b, n);
     statusChar->notify();
   }
@@ -749,6 +826,10 @@ void bleBegin() {
 #if defined(CONFIG_BLUEDROID_ENABLED)
   statusChar->addDescriptor(new BLE2902());
 #endif
+  svc->createCharacteristic(GAUGE_OTACTL_UUID, BLECharacteristic::PROPERTY_WRITE)
+     ->setCallbacks(new OtaCtlCB());
+  svc->createCharacteristic(GAUGE_OTADAT_UUID, BLECharacteristic::PROPERTY_WRITE)
+     ->setCallbacks(new OtaDataCB());
   publishConfig();
   svc->start();
 
@@ -814,5 +895,10 @@ void loop() {
   pollSerial();
   pollBle();
   printMonitor();
+  if (otaState == 2 && (int32_t)(millis() - otaRebootAt) >= 0) {
+    Serial.println(F("Firmware updated, restarting."));
+    delay(100);
+    ESP.restart();
+  }
   delay(1);
 }
