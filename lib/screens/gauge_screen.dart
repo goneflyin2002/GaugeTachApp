@@ -99,7 +99,7 @@ class _GaugeScreenState extends State<GaugeScreen> {
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(children: [
                 _LiveTab(cfg: cfg, st: st),
-                _SetupTab(cfg: cfg),
+                _SetupTab(cfg: cfg, st: st),
                 _NeedleTab(cfg: cfg),
                 _CalTab(cfg: cfg),
               ]),
@@ -166,6 +166,8 @@ class _LiveTabState extends State<_LiveTab> {
     String state;
     if (st == null) {
       state = 'Waiting for gauge…';
+    } else if (st.parked) {
+      state = 'Ignition off – needle parked';
     } else if (st.busy) {
       state = st.homed ? 'Sweeping…' : 'Homing…';
     } else if (!st.homed) {
@@ -284,7 +286,8 @@ class _LiveTabState extends State<_LiveTab> {
 
 class _SetupTab extends StatelessWidget {
   final GaugeConfig cfg;
-  const _SetupTab({required this.cfg});
+  final GaugeStatus? st;
+  const _SetupTab({required this.cfg, required this.st});
 
   static const _cylinders = [1, 2, 3, 4, 5, 6, 8, 10, 12];
 
@@ -361,6 +364,19 @@ class _SetupTab extends StatelessWidget {
         value: cfg.wakeSweep,
         onChanged: (v) => conn.set('wake', v ? 1 : 0),
       ),
+      if (cfg.hasIgnSense) ...[
+        const SectionHeader('Ignition'),
+        SwitchListTile(
+          title: const Text('Park needle when ignition turns off'),
+          subtitle: Text(
+            'Needs ignition sense wired to D9. '
+            'Ignition now: ${st == null ? '–' : (st!.ignOn ? 'ON' : 'OFF')}'
+            '${st?.parked == true ? ' (parked)' : ''}',
+          ),
+          value: cfg.ignSense,
+          onChanged: (v) => conn.set('ign', v ? 1 : 0),
+        ),
+      ],
     ]);
   }
 }

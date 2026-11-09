@@ -31,6 +31,8 @@ class GaugeConfig {
   final double homeSpeed;
   final double overtravel;
   final bool wakeSweep;
+  final bool ignSense; // park needle when ignition power drops (firmware 0.6.0+)
+  final bool hasIgnSense; // firmware supports it
   final List<CalPoint> cal;
 
   GaugeConfig.fromJson(Map<String, dynamic> m)
@@ -51,6 +53,8 @@ class GaugeConfig {
         homeSpeed = _d(m, 'homespeed'),
         overtravel = _d(m, 'overtravel'),
         wakeSweep = _b(m, 'wake'),
+        ignSense = _b(m, 'ign'),
+        hasIgnSense = m.containsKey('ign'),
         cal = ((m['cal'] as List?) ?? const [])
             .map((p) => CalPoint(
                   ((p as List)[0] as num).toDouble(),
@@ -91,6 +95,8 @@ class GaugeStatus {
   final int ota; // 0 idle, 1 receiving, 2 done (rebooting), 3 failed
   final int otaPct;
   final String otaErr;
+  final bool ignOn; // ignition sense reads "key on"
+  final bool parked; // ignition off: needle parked at 0
 
   GaugeStatus.fromJson(Map<String, dynamic> m)
       : rpm = _d(m, 'rpm'),
@@ -105,7 +111,9 @@ class GaugeStatus {
         rev = _i(m, 'rev'),
         ota = _i(m, 'ota'),
         otaPct = _i(m, 'otapct'),
-        otaErr = (m['otaerr'] ?? '').toString();
+        otaErr = (m['otaerr'] ?? '').toString(),
+        ignOn = _b(m, 'ignon'),
+        parked = _b(m, 'parked');
 
   bool get simulating => sim >= 0;
 }
