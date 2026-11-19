@@ -4,6 +4,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 
 import '../models/gauge_models.dart';
+import '../theme.dart';
 
 /// A drawn copy of the gauge face, showing where the real needle is.
 /// The gap in the sweep is centered at the bottom, like most tachs.
@@ -33,10 +34,11 @@ class GaugeDial extends StatelessWidget {
           face: scheme.surfaceContainerHighest,
           ink: scheme.onSurface,
           dim: scheme.onSurfaceVariant,
-          needle: scheme.primary,
+          needle: GaugeColors.needle(Theme.of(context).brightness),
         ),
         child: Align(
-          alignment: const Alignment(0, 0.45),
+          // Between the centre hub and the 0 / full-scale labels at the bottom.
+          alignment: const Alignment(0, 0.3),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

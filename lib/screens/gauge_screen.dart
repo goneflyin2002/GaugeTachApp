@@ -268,6 +268,18 @@ class _LiveTabState extends State<_LiveTab> {
             child: const Text('Set zero here'),
           ),
         ),
+        if (st != null) ...[
+          const SectionHeader('Tach input'),
+          ListTile(
+            title: const Text('Noise pulses rejected'),
+            subtitle: const Text('Should stay near 0. A climbing count means '
+                'interference is reaching the tach wire.'),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('${st.rejected}', style: Theme.of(context).textTheme.titleMedium),
+              TextButton(onPressed: () => conn.send('tach reset'), child: const Text('Reset')),
+            ]),
+          ),
+        ],
         const SizedBox(height: 24),
         if (st != null)
           Text(

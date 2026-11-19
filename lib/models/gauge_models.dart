@@ -97,6 +97,10 @@ class GaugeStatus {
   final String otaErr;
   final bool ignOn; // ignition sense reads "key on"
   final bool parked; // ignition off: needle parked at 0
+<<<<<<< HEAD
+  final int rejected; // tach pulses rejected as noise since boot (firmware 0.7.0+)
+=======
+>>>>>>> a29b9a198a238e0db78b0ea269dbdf3671b9b168
 
   GaugeStatus.fromJson(Map<String, dynamic> m)
       : rpm = _d(m, 'rpm'),
@@ -113,7 +117,12 @@ class GaugeStatus {
         otaPct = _i(m, 'otapct'),
         otaErr = (m['otaerr'] ?? '').toString(),
         ignOn = _b(m, 'ignon'),
+<<<<<<< HEAD
+        parked = _b(m, 'parked'),
+        rejected = _i(m, 'rej');
+=======
         parked = _b(m, 'parked');
+>>>>>>> a29b9a198a238e0db78b0ea269dbdf3671b9b168
 
   bool get simulating => sim >= 0;
 }

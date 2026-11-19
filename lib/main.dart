@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'ble/gauge_ble.dart';
 import 'screens/scan_screen.dart';
+import 'theme.dart';
 
 /// Hide the phone's navigation bar (and status bar). Swiping up from the
 /// bottom edge shows them briefly; Android hides them again by itself.
@@ -55,16 +56,8 @@ class _GaugeAppState extends State<GaugeApp> with WidgetsBindingObserver {
       title: 'Gauge Setup',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.deepOrange,
-        brightness: Brightness.light,
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: Colors.deepOrange,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: buildGaugeTheme(Brightness.light),
+      darkTheme: buildGaugeTheme(Brightness.dark),
       home: const ScanScreen(),
     );
   }
