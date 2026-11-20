@@ -270,15 +270,7 @@ class _LiveTabState extends State<_LiveTab> {
         ),
         if (st != null) ...[
           const SectionHeader('Tach input'),
-          ListTile(
-            title: const Text('Noise pulses rejected'),
-            subtitle: const Text('Should stay near 0. A climbing count means '
-                'interference is reaching the tach wire.'),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('${st.rejected}', style: Theme.of(context).textTheme.titleMedium),
-              TextButton(onPressed: () => conn.send('tach reset'), child: const Text('Reset')),
-            ]),
-          ),
+          _SignalTile(st: st),
         ],
         const SizedBox(height: 24),
         if (st != null)
@@ -569,6 +561,42 @@ class _CalTab extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add point'),
             ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Signal
+
+class _SignalTile extends StatelessWidget {
+  final GaugeStatus st;
+  const _SignalTile({required this.st});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Older firmware (before 0.7.3) only sends the raw count.
+    if (st.signal < 0) {
+      return ListTile(
+        title: const Text('Noise pulses rejected'),
+        trailing: Text('${st.rejected}', style: Theme.of(context).textTheme.titleMedium),
+      );
+    }
+    final (String label, String help, Color color) = switch (st.signal) {
+      1 => ('Good', 'Clean tach signal.', const Color(0xFF43A047)),
+      2 => ('Noisy', 'Some interference is getting in; the reading is still filtered. '
+          'Check the tach wire routing and ground.', const Color(0xFFFFB300)),
+      3 => ('Bad', 'Lots of interference on the tach wire. Check the routing (away from '
+          'plug leads and the coil), the ground, and the capacitor at D10.', scheme.error),
+      _ => ('No signal', 'No sparks arriving (engine stopped?).', scheme.onSurfaceVariant),
+    };
+    return ListTile(
+      title: const Text('Signal'),
+      subtitle: Text(help),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.circle, size: 12, color: color),
+        const SizedBox(width: 8),
+        Text(label, style: Theme.of(context).textTheme.titleMedium),
+      ]),
     );
   }
 }
